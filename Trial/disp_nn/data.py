@@ -127,9 +127,9 @@ def comp_error_in_area(name1, name2, patch_size, max_disp, error_threshold):
 
     for i in range(int(patch_size/2), height - int(patch_size/2)):
         for j in range(max_disp + int(patch_size/2), width - int(patch_size/2)):
-            if disp_ref_pix[i,j] == 0:
+            if int(disp_ref_pix[i,j]) == 0:
                 not_recognized += 1
-            elif abs(disp_ref_pix[i,j] - disp_pix[i,j]) > error_threshold:
+            elif abs(int(disp_ref_pix[i,j]) - int(disp_pix[i,j])) > error_threshold:
                 error_num += 1
             else:
                 filtered_pix[i, j] = disp_pix[i, j]
