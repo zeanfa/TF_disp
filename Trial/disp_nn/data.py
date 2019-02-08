@@ -117,8 +117,8 @@ def comp_error_in_area(name1, name2, patch_size, max_disp, error_threshold):
     disp_ref = Image.open(name1 + ".png")
     disp = Image.open(name2 + ".png")
     width, height = disp.size
-    disp_ref_pix = numpy.atleast_3d(disp_ref)
-    disp_pix = numpy.atleast_3d(disp)
+    disp_ref_pix = numpy.atleast_1d(disp_ref)
+    disp_pix = numpy.atleast_1d(disp)
     filtered_pix = numpy.zeros((height,width))
     
     pix_num = (height - patch_size + 1) * (width - patch_size - max_disp + 1)
