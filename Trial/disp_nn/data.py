@@ -113,6 +113,39 @@ def get_image_in_patches(folder_name, patch_size):
         
     return left_patches, right_patches
 
+def comp_error_in_area(name1, name2, patch_size, max_disp, error_threshold):
+    disp_ref = Image.open(name1 + ".png")
+    disp = Image.open(name2 + ".png")
+    width, height = disp.size
+    disp_ref_pix = numpy.atleast_3d(disp_ref)
+    disp_pix = numpy.atleast_3d(disp)
+    filtered_pix = numpy.zeros((height,width))
+    
+    pix_num = (height - patch_size + 1) * (width - patch_size - max_disp + 1)
+    error_num = 0
+    not_recognized = 0
+
+    for i in range(int(patch_size/2), height - int(patch_size/2)):
+        for j in range(max_disp + int(patch_size/2), width - int(patch_size/2)):
+            if disp_ref_pix[i,j] == 0:
+                not_recognized += 1
+            elif abs(disp_ref_pix[i,j] - disp_pix[i,j]) > error_threshold:
+                error_num += 1
+            else:
+                filtered_pix[i, j] = disp_pix[i, j]
+    print("error rate ", round(error_num*100/(pix_num - not_recognized), 2))
+    print("not recognized", not_recognized)
+    print("num of pixels", pix_num)
+    print("mum of errors", error_num)
+    img = Image.fromarray(filtered_pix.astype('uint8'), mode = 'L')
+    img.save("filtered_disp_" + str(error_threshold) + ".png", "PNG")
+
+patch_size = 11
+max_disp = 63
+error_threshold = 12
+comp_error_in_area("../samples/cones/disp0", "../samples/cones/disp", patch_size, max_disp, error_threshold)
+            
+
 #left, right = get_batch_from_image("../samples/cones/", 11, 63)
 #left, right, outputs = get_batch("../samples/cones/", 11, 3, 6, 4)
 #print(left.shape)
