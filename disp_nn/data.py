@@ -1,6 +1,9 @@
 import numpy
 import random
+from keras.models import Sequential, Model
+from keras.layers import Dense, Conv2D, Dot, Flatten, Input, Concatenate
 from PIL import Image, ImageDraw
+import time
 
 def get_batch(folder_name, patch_size, neg_low, neg_high, scale):
     left_pic = Image.open(folder_name + "im0.png").convert("L")
@@ -113,6 +116,51 @@ def get_image_in_patches(folder_name, patch_size):
         
     return left_patches, right_patches
 
+# convolves images using upper model
+def convolve_images(folder_name, patch_size, conv_feature_maps, conv_model):
+    print("begin convolution")
+    pic = Image.open(folder_name + "im0.png")
+    width, height = pic.size
+    left_patches, right_patches = get_image_in_patches(folder_name, patch_size)
+    left_patches = left_patches.reshape((height*width, patch_size, patch_size, 1))
+    right_patches = right_patches.reshape((height*width, patch_size, patch_size, 1))
+    timestamp = time.time()
+    prediction = conv_model.predict([left_patches,right_patches])
+    conv_left_patches = prediction[0]
+    conv_right_patches = prediction[1]
+    conv_left_patches = conv_left_patches.reshape((height, width, conv_feature_maps))
+    conv_right_patches = conv_right_patches.reshape((height, width, conv_feature_maps))
+    print("total time ", round(time.time()-timestamp, 3))
+    return conv_left_patches, conv_right_patches
+
+#computes disparity using convolved pictures and dense layers
+def disp_map_from_conv(left_conv, right_conv, patch_size, max_disp, conv_feature_maps, dense_model, image_name):
+    print("begin disparity computation")
+    height = left_conv.shape[0]
+    width = right_conv.shape[1]
+    size = max_disp*(width - 2*int(patch_size/2) - max_disp)
+    right_conv_pos = numpy.zeros((size, conv_feature_maps))
+    left_conv_pos = numpy.zeros((size, conv_feature_maps))
+    print(right_conv_pos.shape)
+    disp_pix = numpy.zeros((height,width))
+    timestamp = time.time()
+    
+    for i in range(int(patch_size/2), height - int(patch_size/2)):
+        left_conv_pos = numpy.repeat(left_conv[i,max_disp + int(patch_size/2) :
+                                               width - int(patch_size/2)], max_disp, axis = 0).reshape(((width - max_disp - 2*int(patch_size/2))*max_disp, conv_feature_maps))
+        for j in range(int(patch_size/2), width - int(patch_size/2) - max_disp):
+            right_conv_pos[(j-int(patch_size/2))*max_disp :
+                           (j-int(patch_size/2))*max_disp + max_disp,] = right_conv[i, j : (max_disp+j)]
+            
+        dense_predictions = dense_model.predict([numpy.expand_dims(left_conv_pos, axis = 1), numpy.expand_dims(right_conv_pos, axis = 1)])
+        disp_pix[i, int(patch_size/2) + max_disp : width - int(patch_size/2)] = (
+            255*(max_disp - numpy.argmax(numpy.squeeze(dense_predictions).reshape((width - 2*int(patch_size/2) - max_disp, max_disp)), axis = 1)))/max_disp
+        print("\rtime ", "%.2f" % (time.time()-timestamp), " progress ", "%.2f" % (100*(i - int(patch_size/2))/(height - 2*int(patch_size/2))), "%", end = "\r")
+    print("\rtime ", "%.2f" % (time.time()-timestamp), " progress ", "%.2f" % 100, "%", end = "\r")
+    print("\ntotal time ", "%.2f" % (time.time()-timestamp))
+    img = Image.fromarray(disp_pix.astype('uint8'), mode = 'L')
+    img.save(image_name + ".png", "PNG")
+
 def comp_error_in_area(name1, name2, patch_size, max_disp, error_threshold):
     disp_ref = Image.open(name1 + ".png")
     disp = Image.open(name2 + ".png")
@@ -139,17 +187,3 @@ def comp_error_in_area(name1, name2, patch_size, max_disp, error_threshold):
     print("mum of errors", error_num)
     img = Image.fromarray(filtered_pix.astype('uint8'), mode = 'L')
     img.save("filtered_disp_" + str(error_threshold) + ".png", "PNG")
-
-patch_size = 11
-max_disp = 63
-error_threshold = 12
-comp_error_in_area("../samples/cones/disp0", "../samples/cones/disp", patch_size, max_disp, error_threshold)
-            
-
-#left, right = get_batch_from_image("../samples/cones/", 11, 63)
-#left, right, outputs = get_batch("../samples/cones/", 11, 3, 6, 4)
-#print(left.shape)
-#print(left_patches[0])
-#print(right_patches[0])
-#print(left_patches[1])
-#print(right_patches[1])
