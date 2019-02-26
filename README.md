@@ -1,8 +1,7 @@
 # TF_disp
 This repository contains the research project on disparity map computation using deep learning.\
 Frameworks used are Keras + TensorFlow.\
-*samples* directory contains images to process. It is necessary for left image to be named **im0.png** \
-and for right image - **im1.png**.\
+*samples* directory contains images to process. Left and right images must be named **im0.png** and **im1.png** respectively.\
 *disp_nn* directory contains code and other directories. \
 *img* directory contains processed images and disparity maps as well as information about model in *model*.\
 *np_data* directory contains convolved images as numpy arrays. It is zipped as it is very large.\
