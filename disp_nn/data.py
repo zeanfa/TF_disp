@@ -117,7 +117,30 @@ def get_image_in_patches(folder_name, patch_size):
     return left_patches, right_patches
 
 # convolves images using upper model
-def convolve_images(folder_name, patch_size, conv_feature_maps, conv_model):
+def convolve_images_ctc(folder_name, patch_size, conv_feature_maps, lctc_model, rctc_model):
+    print("begin convolution")
+    left_pic = Image.open(folder_name + "im0.png").convert("L")
+    right_pic = Image.open(folder_name + "im1.png").convert("L")
+    border = int(patch_size/2)
+    
+    left_pix = numpy.atleast_3d(left_pic)
+    right_pix = numpy.atleast_3d(right_pic)
+    width, height = left_pic.size
+    
+    left_f = lambda x: (x - left_pix.mean())/left_pix.std()
+    norm_left = left_f(left_pix)
+    right_f = lambda x: (x - right_pix.mean())/right_pix.std()
+    norm_right = right_f(right_pix)
+    
+    timestamp = time.time()
+    l_prediction = lctc_model.predict([[norm_left]])
+    r_prediction = rctc_model.predict([[norm_right]])
+    conv_left_patches = l_prediction.reshape((height - 2*border, width - 2*border, conv_feature_maps))
+    conv_right_patches = r_prediction.reshape((height - 2*border, width - 2*border, conv_feature_maps))
+    print("total time ", round(time.time()-timestamp, 3))
+    return conv_left_patches, conv_right_patches
+
+def convolve_images(folder_name, patch_size, conv_feature_maps, ctc_model):
     print("begin convolution")
     pic = Image.open(folder_name + "im0.png")
     width, height = pic.size
@@ -133,7 +156,7 @@ def convolve_images(folder_name, patch_size, conv_feature_maps, conv_model):
     print("total time ", round(time.time()-timestamp, 3))
     return conv_left_patches, conv_right_patches
 
-#computes disparity using convolved pictures and dense layers
+# computes disparity using convolved pictures and dense layers
 def disp_map_from_conv(left_conv, right_conv, patch_size, max_disp, conv_feature_maps, dense_model, image_name):
     print("begin disparity computation")
     height = left_conv.shape[0]
@@ -141,7 +164,6 @@ def disp_map_from_conv(left_conv, right_conv, patch_size, max_disp, conv_feature
     size = max_disp*(width - 2*int(patch_size/2) - max_disp)
     right_conv_pos = numpy.zeros((size, conv_feature_maps))
     left_conv_pos = numpy.zeros((size, conv_feature_maps))
-    print(right_conv_pos.shape)
     disp_pix = numpy.zeros((height,width))
     timestamp = time.time()
     
@@ -156,6 +178,46 @@ def disp_map_from_conv(left_conv, right_conv, patch_size, max_disp, conv_feature
         disp_pix[i, int(patch_size/2) + max_disp : width - int(patch_size/2)] = (
             255*(max_disp - numpy.argmax(numpy.squeeze(dense_predictions).reshape((width - 2*int(patch_size/2) - max_disp, max_disp)), axis = 1)))/max_disp
         print("\rtime ", "%.2f" % (time.time()-timestamp), " progress ", "%.2f" % (100*(i - int(patch_size/2))/(height - 2*int(patch_size/2))), "%", end = "\r")
+    print("\rtime ", "%.2f" % (time.time()-timestamp), " progress ", "%.2f" % 100, "%", end = "\r")
+    print("\ntotal time ", "%.2f" % (time.time()-timestamp))
+    img = Image.fromarray(disp_pix.astype('uint8'), mode = 'L')
+    img.save(image_name + ".png", "PNG")
+
+# high improvement
+def disp_map_from_conv_dtc(left_conv, right_conv, patch_size, max_disp, conv_feature_maps, dtc_model, image_name):
+    print("begin disparity computation")
+    height = left_conv.shape[0]
+    width = right_conv.shape[1]
+    disp_pix = numpy.zeros((height,width))
+    timestamp = time.time()
+    dtc_predictions = dtc_model.predict([numpy.expand_dims(numpy.concatenate((left_conv[::, max_disp:width,::],
+                                                                                    right_conv[::,0:width-max_disp,::]), axis = 2), axis = 0)])
+    dtc_predictions = numpy.squeeze(dtc_predictions, axis=0)
+    for i in range(1, max_disp):
+        prediction = dtc_model.predict([numpy.expand_dims(numpy.concatenate((left_conv[::, max_disp:width,::],
+                                                                                    right_conv[::,i:width-max_disp+i,::]), axis = 2), axis = 0)])
+        dtc_predictions = numpy.concatenate((dtc_predictions, numpy.squeeze(prediction, axis=0)), axis=2)
+        print("\rtime ", "%.2f" % (time.time()-timestamp), " progress ", "%.2f" % (100*(i+1)/max_disp), "%", end = "\r")
+    print("\rtime ", "%.2f" % (time.time()-timestamp), " progress ", "%.2f" % 100, "%", end = "\r")
+    disp_pix[::, max_disp:width] = (255*(max_disp - numpy.argmax(dtc_predictions, axis = 2)))/max_disp
+    print("\ntotal time ", "%.2f" % (time.time()-timestamp))
+    img = Image.fromarray(disp_pix.astype('uint8'), mode = 'L')
+    img.save(image_name + ".png", "PNG")
+
+# computes disparity with single pass through dense layers
+# no significant improvement
+def disp_map_from_conv_single(left_conv, right_conv, patch_size, max_disp, conv_feature_maps, dense_model, image_name):
+    print("begin disparity computation")
+    height = left_conv.shape[0]
+    width = right_conv.shape[1]
+    disp_pix = numpy.zeros((height,width))
+    timestamp = time.time()
+    for i in range(max_disp):
+        dense_predictions = dense_model.predict([numpy.expand_dims(left_conv[::, max_disp:width,::].reshape((height*(width-max_disp),conv_feature_maps)), axis = 1),
+                                                 numpy.expand_dims(right_conv[::,i:width-max_disp+i,::].reshape((height*(width-max_disp),conv_feature_maps)), axis = 1)])
+        #disp_pix[i, int(patch_size/2) + max_disp : width - int(patch_size/2)] = (
+            #255*(max_disp - numpy.argmax(numpy.squeeze(dense_predictions).reshape((width - 2*int(patch_size/2) - max_disp, max_disp)), axis = 1)))/max_disp
+        print("\rtime ", "%.2f" % (time.time()-timestamp), " progress ", "%.2f" % (100*(i+1)/max_disp), "%", end = "\r")
     print("\rtime ", "%.2f" % (time.time()-timestamp), " progress ", "%.2f" % 100, "%", end = "\r")
     print("\ntotal time ", "%.2f" % (time.time()-timestamp))
     img = Image.fromarray(disp_pix.astype('uint8'), mode = 'L')
