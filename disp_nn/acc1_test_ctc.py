@@ -17,9 +17,8 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '0'
 conv_feature_maps = 112
 dense_size = 384
 patch_size = 11
-image_name = "cones"
-error_threshold = 12
-cpu_only = False
+image_name = "pattern2"
+cpu_only = True
 
 # fix random seed for reproducibility
 numpy.random.seed(7)
@@ -50,8 +49,8 @@ ctc_right_flatten = Flatten(name = "rf")(ctc_right_conv)
 
 lctc_model = Model(inputs=ctc_left_input, outputs=ctc_left_flatten)
 rctc_model = Model(inputs=ctc_right_input, outputs=ctc_right_flatten)
-lctc_model.load_weights("weights/acc1_weights1_partial.h5", by_name = True)
-rctc_model.load_weights("weights/acc1_weights1_partial.h5", by_name = True)
+lctc_model.load_weights("weights/acc1_weights6.h5", by_name = True)
+rctc_model.load_weights("weights/acc1_weights6.h5", by_name = True)
 
 # convolve images
 left, right = data.convolve_images_ctc("../samples/" + image_name + "/", patch_size, conv_feature_maps, lctc_model, rctc_model)

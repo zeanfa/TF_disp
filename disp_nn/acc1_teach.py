@@ -6,7 +6,7 @@ import data
 import matplotlib.pyplot as plt
 
 # constants
-training_size = 288000
+training_size = 576000
 conv_feature_maps = 112
 dense_size = 384
 patch_size = 11
@@ -15,12 +15,21 @@ image_name = "cones"
 scale = 4
 neg_high = 6
 neg_low = 3
+areas = [0,88,234,291,410,449]
+num_of_batches = 128
+num_of_epochs = 10
 
 # fix random seed for reproducibility
 numpy.random.seed(7)
 
 # load Cones dataset
-left, right, outputs = data.get_batch("../samples/cones/", patch_size, neg_low, neg_high, scale)
+left1, right1, outputs1 = data.get_batch("../samples/" + image_name + "/", patch_size, neg_low, neg_high, scale)
+image_name = "teddy"
+left2, right2, outputs2 = data.get_batch("../samples/" + image_name + "/", patch_size, neg_low, neg_high, scale)
+left = numpy.concatenate((left1,left2))
+right = numpy.concatenate((right1,right2))
+outputs = numpy.concatenate((outputs1,outputs2))
+print(left.shape)
 left = left[0:training_size]
 right = right[0:training_size]
 outputs = outputs[0:training_size]
@@ -49,7 +58,7 @@ output_layer = Dense(1, activation="sigmoid", name = "d4")(dense_layer)
 
 model = Model(inputs=[left_input, right_input], outputs=output_layer)
 model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-history = model.fit([left,right], outputs, epochs=10, batch_size=128)
+history = model.fit([left,right], outputs, epochs=num_of_epochs, batch_size=num_of_batches)
 predictions = model.predict([left[0:10], right[0:10]])
 print(predictions)
 
@@ -69,7 +78,7 @@ plt.xlabel('Epoch')
 plt.legend(['Train', 'Test'], loc='upper left')
 plt.show()
 
-plot_model(model, show_shapes=True, to_file='model.png')
-model.save_weights("weights/acc1_weights2.h5")
+#plot_model(model, show_shapes=True, to_file='model.png')
+model.save_weights("weights/acc1_weights6.h5")
 ########################################################################################
 

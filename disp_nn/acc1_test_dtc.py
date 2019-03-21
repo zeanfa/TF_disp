@@ -13,8 +13,9 @@ import utils
 conv_feature_maps = 112
 dense_size = 384
 patch_size = 11
-max_disp = 64
-image_name = "cones"
+max_disp = 60
+image_name = "pattern2"
+match_th = 0.2
 error_threshold = 12
 cpu_only = True
 
@@ -48,7 +49,7 @@ dense_layer = Dense(dense_size, activation="relu", name = "d3")(dense_layer)
 output_layer = Dense(1, activation="sigmoid", name = "d4")(dense_layer)
 
 model = Model(inputs=[left_input, right_input], outputs=output_layer)
-model.load_weights("weights/acc1_weights1_partial.h5", by_name = True)
+model.load_weights("weights/acc1_weights6.h5", by_name = True)
 
 # load convolved images
 left = numpy.load('np_data/' + image_name + '_left_conv.npy')
@@ -70,8 +71,7 @@ dtc_output = Conv2D(1, kernel_size=1, activation="sigmoid", name="dtc_out", weig
 dtc_model = Model(inputs = dtc_input, outputs = dtc_output)
 
 # compute disparity map
-data.disp_map_from_conv_dtc(left, right, patch_size, max_disp, conv_feature_maps, dtc_model, image_name + "_disp_dtc")
+data.disp_map_from_conv_dtc(left, right, patch_size, max_disp, match_th, conv_feature_maps, dtc_model, image_name + "_disp_dtc")
 
 ##############################################################################################
-#data.comp_error_in_area("../samples/cones/disp0", "../samples/cones/disp", patch_size, max_disp, error_threshold)
 #left, right = data.get_random_sample("../samples/cones/", 11, 8, 12, 4, 0, 5, 68)
