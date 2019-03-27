@@ -6,6 +6,15 @@ from PIL import Image, ImageDraw
 import time
 import matplotlib.pyplot as plt
 
+
+'''
+This function gets folder name in /samples/, size of the patch,
+high an low thresholds for a negative training sample bias
+and disparity scale (e.g., if the disparity image is normalized to 0..255
+and maximum disparity is 64 then scale will be 256 / 64 = 4).
+The output of this function is three numpy arrays (left input patches,
+right input patches and outputs) used for training.
+'''
 def get_batch(folder_name, patch_size, neg_low, neg_high, scale):
     left_pic = Image.open(folder_name + "im0.png").convert("L")
     right_pic = Image.open(folder_name + "im1.png").convert("L")
@@ -55,6 +64,12 @@ def get_batch(folder_name, patch_size, neg_low, neg_high, scale):
         
     return numpy.array(left_patches), numpy.array(right_patches), numpy.array(outputs)
 
+'''
+This function is equal to the upper one but also takes an array of x coordinates which
+limit some areas that contain points inappropriate for learning (e.g., occluded).
+Such array may look like [10,15,55,75,95,97], which means, that no points with x coordinate
+inside [10,15], [55,75] and [95,97] will be in the teaching batch.
+'''
 def get_batch_areas(folder_name, patch_size, neg_low, neg_high, scale, areas):
     left_pic = Image.open(folder_name + "im0.png").convert("L")
     right_pic = Image.open(folder_name + "im1.png").convert("L")
@@ -105,69 +120,11 @@ def get_batch_areas(folder_name, patch_size, neg_low, neg_high, scale, areas):
         
     return numpy.array(left_patches), numpy.array(right_patches), numpy.array(outputs)
 
-def get_random_sample(folder_name, patch_size, neg_low, neg_high, scale, pos_or_neg, i, j):
-    left_pic = Image.open(folder_name + "im0.png").convert("L")
-    right_pic = Image.open(folder_name + "im1.png").convert("L")
-    disp0_pic = Image.open(folder_name + "disp0.png")
-    
-    left_pix = numpy.atleast_3d(left_pic)
-    right_pix = numpy.atleast_3d(right_pic)
-    disp0_pix = numpy.array(disp0_pic)
-    width, height = left_pic.size
-    
-    left_f = lambda x: (x - left_pix.mean())/left_pix.std()
-    norm_left = left_f(left_pix)
-    right_f = lambda x: (x - right_pix.mean())/right_pix.std()
-    norm_right = right_f(right_pix)
-
-    if disp0_pix[i, j] > 0:
-        left_patch = []
-        right_patch = []
-        disp = int(disp0_pix[i, j]/scale)
-        if pos_or_neg == 1:
-            left_patch = norm_left[(i - int(patch_size/2)) : (i + int(patch_size/2) + 1),
-                                   (j - int(patch_size/2)) : (j + int(patch_size/2) + 1)]
-            right_patch = norm_right[(i - int(patch_size/2)) : (i + int(patch_size/2) + 1),
-                                     (j - int(patch_size/2) - disp) : (j + int(patch_size/2) - disp + 1)]
-        else:
-            offset = random.randint(neg_low, neg_high)
-            left_patch = norm_left[(i - int(patch_size/2)) : (i + int(patch_size/2) + 1),
-                                   (j - int(patch_size/2)) : (j + int(patch_size/2) + 1)]
-            right_patch = norm_right[(i - int(patch_size/2)) : (i + int(patch_size/2) + 1),
-                                     (j - int(patch_size/2) - disp + offset) : (j + int(patch_size/2) - disp + offset + 1)]
-        
-        return numpy.array(left_patch), numpy.array(right_patch)
-    else:
-        print("disparity at this point equals 0")
-
-def get_image_in_patches(folder_name, patch_size):
-    left_pic = Image.open(folder_name + "im0.png").convert("L")
-    right_pic = Image.open(folder_name + "im1.png").convert("L")
-    
-    left_pix = numpy.atleast_3d(left_pic)
-    right_pix = numpy.atleast_3d(right_pic)
-    width, height = left_pic.size
-    
-    left_f = lambda x: (x - left_pix.mean())/left_pix.std()
-    norm_left = left_f(left_pix)
-    right_f = lambda x: (x - right_pix.mean())/right_pix.std()
-    norm_right = right_f(right_pix)
-
-    left_patches = numpy.zeros((height,width, patch_size, patch_size, 1))
-    right_patches = numpy.zeros((height,width, patch_size, patch_size, 1))
-    dataset_size = 0
-
-    for i in range(int(patch_size/2), height - int(patch_size/2)):
-        for j in range(int(patch_size/2), width - int(patch_size/2)):
-
-            left_patches[i, j, ::, ::, ::] = norm_left[(i - int(patch_size/2)) : (i + int(patch_size/2) + 1),
-                                                       (j - int(patch_size/2)) : (j + int(patch_size/2) + 1)]
-            right_patches[i, j, ::, ::, ::] = norm_right[(i - int(patch_size/2)) : (i + int(patch_size/2) + 1),
-                                                         (j - int(patch_size/2)) : (j + int(patch_size/2) + 1)]
-        
-    return left_patches, right_patches
-
-# convolves images using upper model
+'''
+This function convolves images and saves them as .npy files.
+The function uses full images instead of set of patches. It needs left and right convolutional
+subnets as an input.
+'''
 def convolve_images_ctc(folder_name, patch_size, conv_feature_maps, lctc_model, rctc_model):
     print("begin convolution")
     left_pic = Image.open(folder_name + "im0.png").convert("L")
@@ -193,50 +150,10 @@ def convolve_images_ctc(folder_name, patch_size, conv_feature_maps, lctc_model, 
     print("total time ", round(time.time()-timestamp, 3))
     return conv_left_patches, conv_right_patches
 
-def convolve_images(folder_name, patch_size, conv_feature_maps, ctc_model):
-    print("begin convolution")
-    pic = Image.open(folder_name + "im0.png")
-    width, height = pic.size
-    left_patches, right_patches = get_image_in_patches(folder_name, patch_size)
-    left_patches = left_patches.reshape((height*width, patch_size, patch_size, 1))
-    right_patches = right_patches.reshape((height*width, patch_size, patch_size, 1))
-    timestamp = time.time()
-    prediction = conv_model.predict([left_patches,right_patches])
-    conv_left_patches = prediction[0]
-    conv_right_patches = prediction[1]
-    conv_left_patches = conv_left_patches.reshape((height, width, conv_feature_maps))
-    conv_right_patches = conv_right_patches.reshape((height, width, conv_feature_maps))
-    print("total time ", round(time.time()-timestamp, 3))
-    return conv_left_patches, conv_right_patches
-
-# computes disparity using convolved pictures and dense layers
-def disp_map_from_conv(left_conv, right_conv, patch_size, max_disp, conv_feature_maps, dense_model, image_name):
-    print("begin disparity computation")
-    height = left_conv.shape[0]
-    width = right_conv.shape[1]
-    size = max_disp*(width - 2*int(patch_size/2) - max_disp)
-    right_conv_pos = numpy.zeros((size, conv_feature_maps))
-    left_conv_pos = numpy.zeros((size, conv_feature_maps))
-    disp_pix = numpy.zeros((height,width))
-    timestamp = time.time()
-    
-    for i in range(int(patch_size/2), height - int(patch_size/2)):
-        left_conv_pos = numpy.repeat(left_conv[i,max_disp + int(patch_size/2) :
-                                               width - int(patch_size/2)], max_disp, axis = 0).reshape(((width - max_disp - 2*int(patch_size/2))*max_disp, conv_feature_maps))
-        for j in range(int(patch_size/2), width - int(patch_size/2) - max_disp):
-            right_conv_pos[(j-int(patch_size/2))*max_disp :
-                           (j-int(patch_size/2))*max_disp + max_disp,] = right_conv[i, j : (max_disp+j)]
-            
-        dense_predictions = dense_model.predict([numpy.expand_dims(left_conv_pos, axis = 1), numpy.expand_dims(right_conv_pos, axis = 1)])
-        disp_pix[i, int(patch_size/2) + max_disp : width - int(patch_size/2)] = (
-            255*(max_disp - numpy.argmax(numpy.squeeze(dense_predictions).reshape((width - 2*int(patch_size/2) - max_disp, max_disp)), axis = 1)))/max_disp
-        print("\rtime ", "%.2f" % (time.time()-timestamp), " progress ", "%.2f" % (100*(i - int(patch_size/2))/(height - 2*int(patch_size/2))), "%", end = "\r")
-    print("\rtime ", "%.2f" % (time.time()-timestamp), " progress ", "%.2f" % 100, "%", end = "\r")
-    print("\ntotal time ", "%.2f" % (time.time()-timestamp))
-    img = Image.fromarray(disp_pix.astype('uint8'), mode = 'L')
-    img.save(image_name + ".png", "PNG")
-
-# high improvement
+'''
+This function takes the result of function "convolve_images_ctc" (convolved full images) and works much faster.
+It creates a disparity image and also can save the disparity map before argmax as a .npy.
+'''
 def disp_map_from_conv_dtc(left_conv, right_conv, patch_size, max_disp, match_th, conv_feature_maps, dtc_model, image_name):
     print("begin disparity computation")
     height = left_conv.shape[0]
@@ -259,6 +176,11 @@ def disp_map_from_conv_dtc(left_conv, right_conv, patch_size, max_disp, match_th
     img = Image.fromarray(disp_pix.astype('uint8'), mode = 'L')
     img.save(image_name + ".png", "PNG")
 
+'''
+This function takes disparity without argmax (raw prediction of a dense net) and can be used
+to implement filters to the disparity ranges in order to create better disparit map or to identify
+bad disparity ranges.
+'''
 def disp_map_from_predict(predictions, left_conv, patch_size, max_disp, match_th, conv_feature_maps, image_name):
     print("begin disparity computation")
     height = left_conv.shape[0]
@@ -280,6 +202,16 @@ def disp_map_from_predict(predictions, left_conv, patch_size, max_disp, match_th
     img = Image.fromarray(disp_pix.astype('uint8'), mode = 'L')
     img.save(image_name + ".png", "PNG")
 
+'''
+!!! All the below functions save their results in /work directory. !!!
+'''
+
+'''
+This function takes a ground truth disparity image and a real disparity image and can be used
+to create graphs and histograms to learn different metrics that can help to identify bad pixels (e.g., noisy).
+The implementation shown creates a metric of standart deviation of set of absolute differences between
+the pixel value and its neighbours inside a window.
+'''
 def comp_metric_corr(name1, name2, predictions, patch_size, max_disp, error_threshold):
     disp_ref = Image.open(name1 + ".png")
     disp = Image.open(name2 + ".png")
@@ -300,7 +232,7 @@ def comp_metric_corr(name1, name2, predictions, patch_size, max_disp, error_thre
         for j in range(max_disp + int(patch_size/2), width - int(patch_size/2)):
             #sad = 0
             sad = []
-            area = 1
+            area = 1 # changes window size, area=1 -> window=3, area=2 -> window=5 etc.
             #for pix in numpy.nditer(disp_pix[i-area:i+area+1,j-area:j+area+1]):
                 #sad += abs(disp_pix[i,j]-pix)
             sad = (abs(disp_pix[i,j] - disp_pix[i-area:i+area+1,j-area:j+area+1])).std()
@@ -325,6 +257,10 @@ def comp_metric_corr(name1, name2, predictions, patch_size, max_disp, error_thre
     plt.legend()
     plt.savefig("work/hist_diff_std_3_snowflake.png")
 
+'''
+Takes a disparity image and substitutes with zeros all the pixels for which the SAD metric inside of the window
+exceeds the threshold value.
+'''
 def sad_filter(name2, patch_size, max_disp, error_threshold, window_size):
     disp = Image.open(name2 + ".png")
     width, height = disp.size
@@ -343,6 +279,10 @@ def sad_filter(name2, patch_size, max_disp, error_threshold, window_size):
     img = Image.fromarray(sad_pix.astype('uint8'), mode = 'L')
     img.save("work/sad_disp" + str(window_size) + '_' + str(error_threshold) + ".png", "PNG")
 
+'''
+Takes a disparity image and substitutes with zeros all the pixels for which the STD (standard deviation)
+metric inside of the window exceeds the threshold value.
+'''
 def std_filter(name2, patch_size, max_disp, error_threshold, window_size):
     disp = Image.open(name2 + ".png")
     width, height = disp.size
@@ -358,27 +298,11 @@ def std_filter(name2, patch_size, max_disp, error_threshold, window_size):
                 
     img = Image.fromarray(std_pix.astype('uint8'), mode = 'L')
     img.save("work/std_disp" + str(window_size) + '_' + str(error_threshold) + ".png", "PNG")
-                
 
-# computes disparity with single pass through dense layers
-# no significant improvement
-def disp_map_from_conv_single(left_conv, right_conv, patch_size, max_disp, conv_feature_maps, dense_model, image_name):
-    print("begin disparity computation")
-    height = left_conv.shape[0]
-    width = right_conv.shape[1]
-    disp_pix = numpy.zeros((height,width))
-    timestamp = time.time()
-    for i in range(max_disp):
-        dense_predictions = dense_model.predict([numpy.expand_dims(left_conv[::, max_disp:width,::].reshape((height*(width-max_disp),conv_feature_maps)), axis = 1),
-                                                 numpy.expand_dims(right_conv[::,i:width-max_disp+i,::].reshape((height*(width-max_disp),conv_feature_maps)), axis = 1)])
-        #disp_pix[i, int(patch_size/2) + max_disp : width - int(patch_size/2)] = (
-            #255*(max_disp - numpy.argmax(numpy.squeeze(dense_predictions).reshape((width - 2*int(patch_size/2) - max_disp, max_disp)), axis = 1)))/max_disp
-        print("\rtime ", "%.2f" % (time.time()-timestamp), " progress ", "%.2f" % (100*(i+1)/max_disp), "%", end = "\r")
-    print("\rtime ", "%.2f" % (time.time()-timestamp), " progress ", "%.2f" % 100, "%", end = "\r")
-    print("\ntotal time ", "%.2f" % (time.time()-timestamp))
-    img = Image.fromarray(disp_pix.astype('uint8'), mode = 'L')
-    img.save(image_name + ".png", "PNG")
-
+'''
+Takes two disparity images, ground truth and real, and compares them to calculate the error rate
+using the error threshold. Also saves a "filtered_disparity" - real disparity with only good pixels kept.
+'''
 def comp_error_in_area(name1, name2, patch_size, max_disp, error_threshold):
     disp_ref = Image.open(name1 + ".png")
     disp = Image.open(name2 + ".png")
@@ -406,6 +330,10 @@ def comp_error_in_area(name1, name2, patch_size, max_disp, error_threshold):
     img = Image.fromarray(filtered_pix.astype('uint8'), mode = 'L')
     img.save("work/no_error_disp_" + str(error_threshold) + ".png", "PNG")
 
+'''
+Restores a disparity image drom a filtered disparity image obtained with sad_filter or std_filter.
+Finds left and right pixels of a black (bad) pixel and fulls the gap with a linear distribution.
+'''
 def approx_disp(image, patch_size, max_disp):
     disp_pic = Image.open(image + ".png")
     disp_pix = numpy.atleast_1d(disp_pic)
@@ -439,6 +367,11 @@ def approx_disp(image, patch_size, max_disp):
     img = Image.fromarray(filtered_pix.astype('uint8'), mode = 'L')
     img.save("work/approx_disp" + ".png", "PNG")
 
+'''
+Restores a disparity image drom a filtered disparity image obtained with sad_filter or std_filter.
+Finds left, right, top and bottom pixels of a black (bad) pixel and restores its value according to
+the values of the nearest meaning neighbours.
+'''
 def approx_disp_full(image, patch_size, max_disp):
     disp_pic = Image.open(image + ".png")
     disp_pix = numpy.atleast_1d(disp_pic).astype('int')
