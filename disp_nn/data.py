@@ -3,6 +3,7 @@ import random
 from keras.models import Sequential, Model
 from keras.layers import Dense, Conv2D, Dot, Flatten, Input, Concatenate
 from PIL import Image, ImageDraw
+from scipy import spatial
 import time
 import matplotlib.pyplot as plt
 
@@ -163,6 +164,7 @@ def disp_map_from_conv_dtc(left_conv, right_conv, patch_size, max_disp, match_th
     dtc_predictions = dtc_model.predict([numpy.expand_dims(numpy.concatenate((left_conv[::, max_disp:width,::],
                                                                                     right_conv[::,0:width-max_disp,::]), axis = 2), axis = 0)])
     dtc_predictions = numpy.squeeze(dtc_predictions, axis=0)
+    print(dtc_predictions.shape)
     for i in range(1, max_disp):
         prediction = dtc_model.predict([numpy.expand_dims(numpy.concatenate((left_conv[::, max_disp:width,::],
                                                                                     right_conv[::,i:width-max_disp+i,::]), axis = 2), axis = 0)])
@@ -173,6 +175,43 @@ def disp_map_from_conv_dtc(left_conv, right_conv, patch_size, max_disp, match_th
     numpy.save('np_data/' + image_name + '_predictions', dtc_predictions)
     disp_pix[::, max_disp:width] = (255*(max_disp - numpy.argmax(dtc_predictions, axis = 2)))/max_disp
     print("\ntotal time ", "%.2f" % (time.time()-timestamp))
+    img = Image.fromarray(disp_pix.astype('uint8'), mode = 'L')
+    img.save(image_name + ".png", "PNG")
+
+
+'''
+FAST ARCHITECTURE
+This function takes the result of function "convolve_images_ctc" (convolved full images) and uses fast cosine similarity metric
+to produce the output.
+It creates a disparity image and also can save the disparity map before argmax as a .npy.
+'''
+def disp_map_from_conv_fst(left_conv, right_conv, patch_size, max_disp, match_th, conv_feature_maps, image_name):
+    print("begin disparity computation")
+    height = left_conv.shape[0]
+    width = right_conv.shape[1]
+    disp_pix = numpy.zeros((height,width))
+    timestamp = time.time()
+    cosine_arr =  numpy.einsum('ijk,ijk->ij', left_conv[::, max_disp:width,::], right_conv[::,0:width-max_disp,::]) / (
+              numpy.linalg.norm(left_conv[::, max_disp:width,::], axis=-1) * numpy.linalg.norm(right_conv[::,0:width-max_disp,::], axis=-1))
+    cosine_arr = numpy.expand_dims(cosine_arr, axis=2)
+    print(cosine_arr.shape)
+    for i in range(1, max_disp):
+        cosine =  numpy.einsum('ijk,ijk->ij', left_conv[::, max_disp:width,::], right_conv[::,i:width-max_disp+i,::]) / (
+              numpy.linalg.norm(left_conv[::, max_disp:width,::], axis=-1) * numpy.linalg.norm(right_conv[::,i:width-max_disp+i,::], axis=-1))
+        cosine = numpy.expand_dims(cosine, axis=2)
+        cosine_arr = numpy.concatenate((cosine_arr, cosine), axis=2)
+        print("\rtime ", "%.2f" % (time.time()-timestamp), " progress ", "%.2f" % (100*(i+1)/max_disp), "%", end = "\r")
+    cosine_arr[numpy.isnan(cosine_arr)] = 0
+    print("\rtime ", "%.2f" % (time.time()-timestamp), " progress ", "%.2f" % 100, "%", end = "\r")
+    #numpy.save('np_data/' + image_name + '_predictions', dtc_predictions)
+    disp_pix[::, max_disp:width] = (255*(max_disp - numpy.argmax(cosine_arr, axis = 2)))/max_disp
+    print("\ntotal time ", "%.2f" % (time.time()-timestamp))
+    print(cosine_arr[171,51])
+    print(numpy.argmax(cosine_arr[171,51]))
+    print(disp_pix[171,111])
+    print(cosine_arr[171,52])
+    print(numpy.argmax(cosine_arr[171,52]))
+    print(disp_pix[171,112])
     img = Image.fromarray(disp_pix.astype('uint8'), mode = 'L')
     img.save(image_name + ".png", "PNG")
 
