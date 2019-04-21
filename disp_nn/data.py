@@ -3,10 +3,10 @@ import random
 from keras.models import Sequential, Model
 from keras.layers import Dense, Conv2D, Dot, Flatten, Input, Concatenate
 from PIL import Image, ImageDraw
-from scipy import spatial
+from scipy import spatial, ndimage, misc
 import time
 import matplotlib.pyplot as plt
-
+from sklearn.feature_extraction import image as skim
 
 '''
 This function gets folder name in /samples/, size of the patch,
@@ -203,17 +203,15 @@ def disp_map_from_conv_fst(left_conv, right_conv, patch_size, max_disp, match_th
         print("\rtime ", "%.2f" % (time.time()-timestamp), " progress ", "%.2f" % (100*(i+1)/max_disp), "%", end = "\r")
     cosine_arr[numpy.isnan(cosine_arr)] = 0
     print("\rtime ", "%.2f" % (time.time()-timestamp), " progress ", "%.2f" % 100, "%", end = "\r")
-    #numpy.save('np_data/' + image_name + '_predictions', dtc_predictions)
+    numpy.save('np_data/' + image_name + '_cosine', cosine_arr)
     disp_pix[::, max_disp:width] = (255*(max_disp - numpy.argmax(cosine_arr, axis = 2)))/max_disp
     print("\ntotal time ", "%.2f" % (time.time()-timestamp))
-    print(cosine_arr[171,51])
-    print(numpy.argmax(cosine_arr[171,51]))
-    print(disp_pix[171,111])
-    print(cosine_arr[171,52])
-    print(numpy.argmax(cosine_arr[171,52]))
-    print(disp_pix[171,112])
     img = Image.fromarray(disp_pix.astype('uint8'), mode = 'L')
     img.save(image_name + ".png", "PNG")
+
+'''
+!!! All the below functions save their results in /work directory. !!!
+'''
 
 '''
 This function takes disparity without argmax (raw prediction of a dense net) and can be used
@@ -239,11 +237,7 @@ def disp_map_from_predict(predictions, left_conv, patch_size, max_disp, match_th
     disp_pix[::,max_disp:width] = (255*(max_disp - disp_pix[::,max_disp:width]))/max_disp
     print("\ntotal time ", "%.2f" % (time.time()-timestamp))
     img = Image.fromarray(disp_pix.astype('uint8'), mode = 'L')
-    img.save(image_name + ".png", "PNG")
-
-'''
-!!! All the below functions save their results in /work directory. !!!
-'''
+    img.save("work/" + image_name + ".png", "PNG")
 
 '''
 This function takes a ground truth disparity image and a real disparity image and can be used
@@ -367,7 +361,7 @@ def comp_error_in_area(name1, name2, patch_size, max_disp, error_threshold):
     print("num of pixels", pix_num)
     print("mum of errors", error_num)
     img = Image.fromarray(filtered_pix.astype('uint8'), mode = 'L')
-    img.save("work/no_error_disp_" + str(error_threshold) + ".png", "PNG")
+    img.save("work/no_error_disp_th_" + str(error_threshold) + "_error_" + str(int(error_num*100/(pix_num - not_recognized))) + ".png", "PNG")
 
 '''
 Restores a disparity image drom a filtered disparity image obtained with sad_filter or std_filter.
